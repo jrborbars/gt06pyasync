@@ -24,11 +24,12 @@
 @copyright :Copyright (c) 2022
 """
 
-import ure
-import usys
-import usocket
+import re
+import sys
+import socket
 import _thread
-from usr.logging import getLogger
+import traceback
+from gt06_logging import getLogger
 
 logger = getLogger(__name__)
 
@@ -139,10 +140,10 @@ class SocketBase(Singleton):
             if self.__port is None:
                 self.__port == 8883 if self.__domain.startswith("https://") else 1883
             try:
-                addr_info = usocket.getaddrinfo(self.__domain, self.__port)
+                addr_info = socket.getaddrinfo(self.__domain, self.__port)
                 self.__ip = addr_info[0][-1][0]
             except Exception as e:
-                usys.print_exception(e)
+                traceback.print_exception(*sys.exc_info())
                 raise ValueError("Domain %s DNS parsing error. %s" % (self.__domain, str(e)))
         self.__addr = (self.__ip, self.__port)
 
@@ -153,18 +154,18 @@ class SocketBase(Singleton):
             ValueError: ip or domain or method is illegal.
         """
         if self.__check_ipv4():
-            socket_af = usocket.AF_INET
+            socket_af = socket.AF_INET
         elif self.__check_ipv6():
-            socket_af = usocket.AF_INET6
+            socket_af = socket.AF_INET6
         else:
             raise ValueError("Args ip %s is illegal!" % self.__ip)
 
         if self.__method == 'TCP':
-            socket_type = usocket.SOCK_STREAM
-            socket_proto = usocket.IPPROTO_TCP
+            socket_type = socket.SOCK_STREAM
+            socket_proto = socket.IPPROTO_TCP
         elif self.__method == 'UDP':
-            socket_type = usocket.SOCK_DGRAM
-            socket_proto = usocket.IPPROTO_UDP
+            socket_type = socket.SOCK_DGRAM
+            socket_proto = socket.IPPROTO_UDP
         else:
             raise ValueError("Args method is TCP or UDP, not %s" % self.__method)
         self.__socket_args = (socket_af, socket_type, socket_proto)
@@ -178,7 +179,7 @@ class SocketBase(Singleton):
         self.__ipv4_item = r"(25[0-5]|2[0-4]\d|[01]?\d\d?)"
         self.__ipv4_regex = r"^{item}\.{item}\.{item}\.{item}$".format(item=self.__ipv4_item)
         if self.__ip.find(":") == -1:
-            ipv4_re = ure.search(self.__ipv4_regex, self.__ip)
+            ipv4_re = re.search(self.__ipv4_regex, self.__ip)
             if ipv4_re:
                 if ipv4_re.group(0) == self.__ip:
                     return True
@@ -213,7 +214,7 @@ class SocketBase(Singleton):
         #     ^({ipv6}:){6}:$
         # """.format(ipv4=ipv4_regex, ipv6=self.__ipv6_item)
 
-        if self.ip.startswith("::") or ure.search(self.__ipv6_item + ":", self.__ip):
+        if self.ip.startswith("::") or re.search(self.__ipv6_item + ":", self.__ip):
             return True
         else:
             return False
@@ -227,12 +228,12 @@ class SocketBase(Singleton):
         """
         if self.__socket_args:
             try:
-                self.__socket = usocket.socket(*self.__socket_args)
+                self.__socket = socket.socket(*self.__socket_args)
                 if self.__method == 'TCP':
                     self.__socket.connect(self.__addr)
                 return True
             except Exception as e:
-                usys.print_exception(e)
+                traceback.print_exception(*sys.exc_info())
 
         return False
 
@@ -249,7 +250,7 @@ class SocketBase(Singleton):
                 self.__socket = None
                 return True
             except Exception as e:
-                usys.print_exception(e)
+                traceback.print_exception(*sys.exc_info())
                 return False
         else:
             return True
@@ -267,15 +268,16 @@ class SocketBase(Singleton):
         if self.__socket is not None:
             try:
                 if self.__method == "TCP":
-                    write_data_num = self.__socket.write(data)
-                    if write_data_num == len(data):
+                    # Standard Python sockets use send(), not write()
+                    send_data_num = self.__socket.send(data)
+                    if send_data_num == len(data):
                         return True
                 elif self.__method == "UDP":
                     send_data_num = self.__socket.sendto(data, self.__addr)
                     if send_data_num == len(data):
                         return True
             except Exception as e:
-                usys.print_exception(e)
+                traceback.print_exception(*sys.exc_info())
 
         return False
 
@@ -305,7 +307,7 @@ class SocketBase(Singleton):
                         break
             except Exception as e:
                 if e.args[0] != 110:
-                    usys.print_exception(e)
+                    traceback.print_exception(*sys.exc_info())
                     logger.error("%s read falied. error: %s" % (self.__method, str(e)))
 
         return data
@@ -353,7 +355,7 @@ class SocketBase(Singleton):
                 elif self.__method == "UDP":
                     _status = 0
             except Exception as e:
-                usys.print_exception(e)
+                traceback.print_exception(*sys.exc_info())
 
         return _status
 

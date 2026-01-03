@@ -24,13 +24,13 @@
 @copyright :Copyright (c) 2022
 """
 
-import usys
+import sys
 import math
-import ubinascii
+import binascii
 
-from usr.crc_itu import crc16
-from usr.logging import getLogger
-from usr.common import str_fill, SerialNo
+from crc_itu import crc16
+from gt06_logging import getLogger
+from common import str_fill, SerialNo
 
 logger = getLogger(__name__)
 
@@ -41,23 +41,23 @@ class GT06MsgBase(object):
     """This is base class for GT06 protocol message."""
 
     def __init__(self):
-        self.__msg_len = ""
-        self.__protocal_no = ""
-        self.__msg_no = ""
-        self.__crc_code = ""
-        self.__start_byte = "7878"
-        self.__end_byte = "0d0a"
-        self.__content_info = {}
-        self.__content_byte = ""
-        self.__serial_no_obj = _serial_no_obj
+        self._msg_len = ""
+        self._protocal_no = ""
+        self._msg_no = ""
+        self._crc_code = ""
+        self._start_byte = "7878"
+        self._end_byte = "0d0a"
+        self._content_info = {}
+        self._content_byte = ""
+        self._serial_no_obj = _serial_no_obj
 
-        self.__imei = ""
-        self.__gps = ""
-        self.__lbs = ""
-        self.__device_status = ""
-        self.__device_cmd = ""
+        self._imei = ""
+        self._gps = ""
+        self._lbs = ""
+        self._device_status = ""
+        self._device_cmd = ""
 
-    def __init_protocal_no(self, protocal_no):
+    def _init_protocal_no(self, protocal_no):
         """Init protocal number to hex.
 
         Args:
@@ -68,40 +68,40 @@ class GT06MsgBase(object):
                 0x15 - device command
                 0x16 - GPS & device status
         """
-        self.__protocal_no = str_fill(hex(protocal_no)[2:], target_len=2)
+        self._protocal_no = str_fill(hex(protocal_no)[2:], target_len=2)
 
-    def __init_content_byte(self):
+    def _init_content_byte(self):
         """Init message content by different protocal number.
 
         The function is implemented in the subclass.
         """
         pass
 
-    def __init_msg_len(self):
+    def _init_msg_len(self):
         """Init message length.
 
         Raises:
             ValueError: Total message length is less than or equal to 250.
         """
-        _msg_len = 5 + int(len(self.__content_byte) / 2)
+        _msg_len = 5 + int(len(self._content_byte) / 2)
         if _msg_len > 0xFF:
             raise ValueError("Message concent bit length is greater than 250!")
-        self.__msg_len = str_fill(hex(_msg_len)[2:], target_len=2)
+        self._msg_len = str_fill(hex(_msg_len)[2:], target_len=2)
 
-    def __init_msg_no(self):
+    def _init_msg_no(self):
         """Init message serial number.
 
         Serial number is start from 1.
         """
-        _msg_no = self.__serial_no_obj.get_serial_no()
-        self.__msg_no = str_fill(hex(_msg_no)[2:], target_len=4)
+        _msg_no = self._serial_no_obj.get_serial_no()
+        self._msg_no = str_fill(hex(_msg_no)[2:], target_len=4)
 
-    def __init_crc_code(self):
+    def _init_crc_code(self):
         """Init error checking by CRC-ITU"""
-        args = (self.__msg_len, self.__protocal_no, self.__content_byte, self.__msg_no)
+        args = (self._msg_len, self._protocal_no, self._content_byte, self._msg_no)
         _msg_byte_info = ("{}" * len(args)).format(*args)
         _crc_code = crc16(bytearray([int(_msg_byte_info[i:i + 2], 16) for i in range(0, len(_msg_byte_info), 2)]))
-        self.__crc_code = str_fill(hex(_crc_code)[2:], target_len=4)
+        self._crc_code = str_fill(hex(_crc_code)[2:], target_len=4)
 
     def get_msg(self):
         """Get byte message for different protocol number to send to server.
@@ -111,20 +111,20 @@ class GT06MsgBase(object):
                 message_no(int): message serial number.
                 message_bytes(byte): byte message infomation.
         """
-        if not self.__protocal_no:
+        if not self._protocal_no:
             return (-1, b'')
 
-        self.__init_content_byte()
-        self.__init_msg_len()
-        self.__init_msg_no()
-        self.__init_crc_code()
+        self._init_content_byte()
+        self._init_msg_len()
+        self._init_msg_no()
+        self._init_crc_code()
 
-        args = (self.__start_byte, self.__msg_len, self.__protocal_no, self.__content_byte, self.__msg_no, self.__crc_code, self.__end_byte)
+        args = (self._start_byte, self._msg_len, self._protocal_no, self._content_byte, self._msg_no, self._crc_code, self._end_byte)
         logger.debug("get_msg args: %s" % str(args))
         _msg_byte_info = ("{}" * len(args)).format(*args)
         logger.debug("get_msg _msg_byte_info: %s" % _msg_byte_info)
-        _msg_byte = bytearray([int(_msg_byte_info[i:i + 2], 16) for i in range(0, len(_msg_byte_info), 2)]).decode().encode()
-        return (int(self.__msg_no, 16), _msg_byte)
+        _msg_byte = bytes([int(_msg_byte_info[i:i + 2], 16) for i in range(0, len(_msg_byte_info), 2)])
+        return (int(self._msg_no, 16), _msg_byte)
 
     def set_gps(self, date_time, satellite_num, latitude, longitude, speed, course, lat_ns, lon_ew, gps_onoff, is_real_time):
         """Set GPS infomations.
@@ -155,7 +155,7 @@ class GT06MsgBase(object):
             bool: True - success, False - failed.
         """
         try:
-            date_time_byte = ubinascii.hexlify(bytearray([int(date_time[i:i + 2]) for i in range(0, len(date_time), 2)])).decode()
+            date_time_byte = binascii.hexlify(bytearray([int(date_time[i:i + 2]) for i in range(0, len(date_time), 2)])).decode()
             gps_len_byte = "c"
             satellite_num_byte = hex(satellite_num if satellite_num <= 15 else 15)[2:]
             latitude_byte = str_fill(hex(math.trunc(latitude * 6 * 3 * 10 ** 5))[2:], target_len=8)
@@ -166,11 +166,12 @@ class GT06MsgBase(object):
             status_course_byte = str_fill(hex(int(status_course_bit, 2))[2:], target_len=4)
             gps_args = (date_time_byte, gps_len_byte, satellite_num_byte, latitude_byte, longitude_byte, speed_byte, status_course_byte)
             logger.debug("set_gps gps_args: %s" % str(gps_args))
-            self.__gps = ("{}" * len(gps_args)).format(*gps_args)
-            logger.debug("set_gps self.__gps: %s" % str(self.__gps))
+            self._gps = ("{}" * len(gps_args)).format(*gps_args)
+            logger.debug("set_gps self._gps: %s" % str(self._gps))
             return True
         except Exception as e:
-            usys.print_exception(e)
+            import traceback
+            traceback.print_exception(*sys.exc_info())
             return False
 
     def set_lbs(self, mcc, mnc, lac, cell_id):
@@ -196,11 +197,12 @@ class GT06MsgBase(object):
             cell_id_byte = str_fill(hex(cell_id)[2:], target_len=6)
             lbs_args = (mcc_byte, mnc_byte, lac_byte, cell_id_byte)
             logger.debug("set_lbs lbs_args: %s" % str(lbs_args))
-            self.__lbs = ("{}" * len(lbs_args)).format(*lbs_args)
-            logger.debug("set_lbs __lbs: %s" % str(self.__lbs))
+            self._lbs = ("{}" * len(lbs_args)).format(*lbs_args)
+            logger.debug("set_lbs _lbs: %s" % str(self._lbs))
             return True
         except Exception as e:
-            usys.print_exception(e)
+            import traceback
+            traceback.print_exception(*sys.exc_info())
             return False
 
     def set_device_status(self, defend, acc, charge, alarm, gps, power, voltage_level, gsm_signal):
@@ -256,11 +258,12 @@ class GT06MsgBase(object):
             additional_alarm = str_fill(hex(int(alarm))[2:], target_len=2)
             language = "02"
             device_status_args = (_device_info, _voltage_level, _gsm_signal, additional_alarm, language)
-            self.__device_status = ("{}" * len(device_status_args)).format(*device_status_args)
-            logger.debug("set_device_status self.__device_status: %s" % self.__device_status)
+            self._device_status = ("{}" * len(device_status_args)).format(*device_status_args)
+            logger.debug("set_device_status self._device_status: %s" % self._device_status)
             return True
         except Exception as e:
-            usys.print_exception(e)
+            import traceback
+            traceback.print_exception(*sys.exc_info())
             return False
 
 
@@ -272,31 +275,31 @@ class GT06MsgParse(GT06MsgBase):
 
     def __parse_msg_len(self):
         """Parse message len from server message."""
-        self.__msg_len = self.__msg_byte[4:6]
+        self._msg_len = self.__msg_byte[4:6]
 
     def __parse_protocol_no(self):
         """Parse protocol number from server message."""
-        self.__protocal_no = self.__msg_byte[6:8]
+        self._protocal_no = self.__msg_byte[6:8]
 
     def __parse_content(self):
         """Parse content information from server message."""
-        self.__content_byte = self.__msg_byte[8:-12]
-        if self.__content_byte:
-            _server_flag = int(self.__content_byte[2:10], 16)
-            _cmd_data_byte = self.__content_byte[10:]
+        self._content_byte = self.__msg_byte[8:-12]
+        if self._content_byte:
+            _server_flag = int(self._content_byte[2:10], 16)
+            _cmd_data_byte = self._content_byte[10:]
             _cmd_data = bytearray([_cmd_data_byte[i:i + 2] for i in range(0, len(_cmd_data_byte), 2)]).decode()
-            self.__content_info = {
+            self._content_info = {
                 "server_flag": _server_flag,
                 "cmd_data": _cmd_data,
             }
 
     def __parse_msg_no(self):
         """Parse message serial number from server message."""
-        self.__msg_no = self.__msg_byte[-12:-8]
+        self._msg_no = self.__msg_byte[-12:-8]
 
     def __parse_crc_code(self):
         """Parse message error checking code (crc code) from server message."""
-        self.__crc_code = self.__msg_byte[-8:-4]
+        self._crc_code = self.__msg_byte[-8:-4]
 
     def __check_crc_code(self):
         """Check crc code is legal.
@@ -306,10 +309,10 @@ class GT06MsgParse(GT06MsgBase):
         """
         _msg_byte_info = self.__msg_byte[4:-8]
         _crc_code = crc16(bytearray([int(_msg_byte_info[i:i + 2], 16) for i in range(0, len(_msg_byte_info), 2)]))
-        if _crc_code == int(self.__crc_code, 16):
+        if _crc_code == int(self._crc_code, 16):
             return True
         else:
-            logger.error("Server message crc[%s] is not compare with actual calculation crc[%s]" % (int(self.__crc_code, 16), _crc_code))
+            logger.error("Server message crc[%s] is not compare with actual calculation crc[%s]" % (int(self._crc_code, 16), _crc_code))
             return False
 
     def set_msg(self, msg):
@@ -321,7 +324,7 @@ class GT06MsgParse(GT06MsgBase):
         Returns:
             bool: True - success, False - crc code check failed.
         """
-        self.__msg_byte = ubinascii.hexlify(msg).decode()
+        self.__msg_byte = binascii.hexlify(msg).decode()
         self.__parse_crc_code()
         if self.__check_crc_code():
             self.__parse_msg_len()
@@ -343,9 +346,9 @@ class GT06MsgParse(GT06MsgBase):
                     cmd_data(str): server command data
         """
         _msg_info = {
-            "protocol_no": int(self.__protocal_no, 16) if self.__protocal_no else -1,
-            "msg_no": int(self.__msg_no, 16) if self.__msg_no else -1,
-            "content": self.__content_info,
+            "protocol_no": int(self._protocal_no, 16) if self._protocal_no else -1,
+            "msg_no": int(self._msg_no, 16) if self._msg_no else -1,
+            "content": self._content_info,
         }
         return _msg_info
 
@@ -355,12 +358,12 @@ class T01(GT06MsgBase):
 
     def __init__(self):
         super().__init__()
-        self.__init_protocal_no(0x01)
+        self._init_protocal_no(0x01)
 
-    def __init_content_byte(self):
-        if not self.__imei:
+    def _init_content_byte(self):
+        if not self._imei:
             raise ValueError("IMEI is not set!")
-        self.__content_byte = self.__imei
+        self._content_byte = self._imei
 
     def set_imei(self, imei):
         """Set device imei to login.
@@ -372,10 +375,11 @@ class T01(GT06MsgBase):
             bool: True - success, False - failed.
         """
         try:
-            self.__imei = str_fill(imei, target_len=16)
+            self._imei = str_fill(imei, target_len=16)
             return True
         except Exception as e:
-            usys.print_exception(e)
+            import traceback
+            traceback.print_exception(*sys.exc_info())
             return False
 
 
@@ -387,12 +391,12 @@ class T12(GT06MsgBase):
 
     def __init__(self):
         super().__init__()
-        self.__init_protocal_no(0x12)
+        self._init_protocal_no(0x12)
 
-    def __init_content_byte(self):
-        if not self.__gps:
+    def _init_content_byte(self):
+        if not self._gps:
             raise ValueError("GPS info is not set!")
-        self.__content_byte = self.__gps + self.__lbs
+        self._content_byte = self._gps + self._lbs
 
 
 class T13(GT06MsgBase):
@@ -405,12 +409,12 @@ class T13(GT06MsgBase):
 
     def __init__(self):
         super().__init__()
-        self.__init_protocal_no(0x13)
+        self._init_protocal_no(0x13)
 
-    def __init_content_byte(self):
-        if not self.__device_status:
+    def _init_content_byte(self):
+        if not self._device_status:
             raise ValueError("Device status is not set!")
-        self.__content_byte = self.__device_status
+        self._content_byte = self._device_status
 
 
 class T15(GT06MsgBase):
@@ -418,12 +422,12 @@ class T15(GT06MsgBase):
 
     def __init__(self):
         super().__init__()
-        self.__init_protocal_no(0x15)
+        self._init_protocal_no(0x15)
 
-    def __init_content_byte(self):
-        if not self.__device_cmd:
+    def _init_content_byte(self):
+        if not self._device_cmd:
             raise ValueError("Device command info is not set!")
-        self.__content_byte = self.__device_cmd
+        self._content_byte = self._device_cmd
 
     def set_device_cmd(self, server_flag, cmd_data):
         """Set device command.
@@ -437,13 +441,14 @@ class T15(GT06MsgBase):
         """
         try:
             _server_flag = str_fill(hex(server_flag)[2:], target_len=8)
-            _cmd_data = ubinascii.hexlify(cmd_data).decode()
+            _cmd_data = binascii.hexlify(cmd_data).decode()
             _cmd_len = str_fill(hex(4 + int(len(_cmd_data) / 2))[2:], target_len=2)
             cmd_args = (_cmd_len, _server_flag, _cmd_data)
-            self.__device_cmd = ("{}" * len(cmd_args)).format(*cmd_args)
+            self._device_cmd = ("{}" * len(cmd_args)).format(*cmd_args)
             return True
         except Exception as e:
-            usys.print_exception(e)
+            import traceback
+            traceback.print_exception(*sys.exc_info())
             return False
 
 
@@ -455,11 +460,11 @@ class T16(GT06MsgBase):
 
     def __init__(self):
         super().__init__()
-        self.__init_protocal_no(0x16)
+        self._init_protocal_no(0x16)
 
-    def __init_content_byte(self):
-        if not self.__gps:
+    def _init_content_byte(self):
+        if not self._gps:
             raise ValueError("GPS info is not set!")
-        if not self.__device_status:
+        if not self._device_status:
             raise ValueError("Device status is not set!")
-        self.__content_byte = self.__gps + str_fill(hex(int(len(self.__lbs) / 2))[2:], target_len=2) + self.__lbs + self.__device_status
+        self._content_byte = self._gps + str_fill(hex(int(len(self._lbs) / 2))[2:], target_len=2) + self._lbs + self._device_status

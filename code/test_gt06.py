@@ -28,7 +28,7 @@ import net
 import utime
 import modem
 from usr.gt06 import GT06
-from usr.logging import getLogger
+from usr.gt06_logging import getLogger
 
 logger = getLogger(__name__)
 

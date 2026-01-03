@@ -30,7 +30,7 @@ import _thread
 import osTimer
 from misc import Power
 
-from usr.logging import getLogger
+from usr.gt06_logging import getLogger
 from usr.common import SocketBase
 from usr.gt06_msg import GT06MsgParse, T01, T12, T13, T15, T16
 

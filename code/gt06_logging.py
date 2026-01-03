@@ -16,7 +16,7 @@
 # -*- coding: utf-8 -*-
 
 """
-@file      :logging.py
+@file      :gt06_logging.py
 @author    :Jack Sun (jack.sun@quectel.com)
 @brief     :<description>
 @version   :1.0.0
@@ -24,7 +24,7 @@
 @copyright :Copyright (c) 2022
 """
 
-import utime
+import time
 
 
 class Logger:
@@ -45,15 +45,15 @@ class Logger:
             if self.__level_code.get(level) < self.__level_code.get(self.__level):
                 return
 
-        if hasattr(utime, "strftime"):
+        if hasattr(time, "strftime"):
             print(
-                "[{}]".format(utime.strftime("%Y-%m-%d %H:%M:%S")),
+                "[{}]".format(time.strftime("%Y-%m-%d %H:%M:%S")),
                 "[{}]".format(name),
                 "[{}]".format(level),
                 *message
             )
         else:
-            t = utime.localtime()
+            t = time.localtime()
             print(
                 "[{}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}]".format(*t),
                 "[{}]".format(name),
@@ -97,3 +97,4 @@ class Logger:
 
 def getLogger(name):
     return Logger(name)
+

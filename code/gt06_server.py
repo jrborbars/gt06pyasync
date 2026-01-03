@@ -21,7 +21,7 @@ from socket import AF_INET, socket, SOCK_STREAM
 from threading import Thread
 from datetime import datetime
 from dateutil import tz
-import googlemaps
+import requests
 import math
 import os
 
@@ -390,12 +390,12 @@ def answer_wifi_lbs(client, query):
     r_1 = make_content_response(hex_dict['start'] + hex_dict['start'], protocol, dt.strftime('%y%m%d%H%M%S'), hex_dict['stop_1'] + hex_dict['stop_2'], ignoreDatetimeLength=False, ignoreSeparatorLength=False, forceLengthToValue=0)
 
     # Build second stage of response, which requires decoding the positioning data
-    print("Decoding location-based data using Google Maps Geolocation API...")
-    decoded_position = GoogleMaps_geolocation_service(gmaps, positions[client])
+    print("Decoding location-based data using OpenCellID API...")
+    decoded_position = OpenCellID_geolocation_service(opencellid_api_key, positions[client])
     
     # Handle errors in decoding location
     if (list(decoded_position.keys())[0] == 'error'):
-        # Google API returned an error
+        # OpenCellID API returned an error
         positions[client]['gps']['method'] = 'LBS'
         positions[client]['gps']['datetime'] = ''
         positions[client]['gps']['valid'] = 0
@@ -407,7 +407,7 @@ def answer_wifi_lbs(client, query):
         positions[client]['gps']['heading'] = ''
     
     else:
-        # Google API returned a location
+        # OpenCellID API returned a location
         if (len(positions[client]['wifi']) > 0):
             positions[client]['gps']['method'] = 'LBS-GSM-WIFI'
         else:
@@ -534,39 +534,117 @@ def get_hexified_datetime(truncatedYear):
     return(''.join(dt))
 
 
-def GoogleMaps_geolocation_service(gmapsClient, positionDict):
+def OpenCellID_geolocation_service(api_key, positionDict):
     """
-    This wrapper function will query the Google Maps API with the list
-    of cell towers identifiers and WiFi SSIDs that the device detected.
-    It requires a Google Maps API key.
+    This wrapper function will query the OpenCellID REST API with the list
+    of cell towers identifiers that the device detected.
+    It requires an OpenCellID API key.
     
-    For now, the radio_type argument is forced to 'gsm' because there are 
-    no CDMA cells in France (at least that's what I believe), and since the
-    GPS device only handles 2G, it's the only option available.
-    The carrier is forced to 'Free' since that's the one for the SIM card
-    I'm using, but again this would need to be tweaked (also it probbaly
-    doesn't make much of a difference to feed it to the function or not!)
+    OpenCellID works by looking up individual cell tower locations from a database.
+    We'll use the strongest signal cell tower or average multiple towers if available.
     
-    These would need to be tweaked depending on where you live.
-
-    A nice source for such data is available at https://opencellid.org/
+    Note: OpenCellID primarily works with cell tower data, not WiFi.
+    WiFi geolocation is not supported by OpenCellID.
+    
+    More information available at https://opencellid.org/
     """
-    print('Google Maps Geolocation API queried with:', positionDict)
-    geoloc = gmapsClient.geolocate(home_mobile_country_code=positionDict['gsm-carrier']['MCC'], 
-        home_mobile_network_code=positionDict['gsm-carrier']['MCC'], 
-        radio_type='gsm', 
-        carrier='Free', 
-        consider_ip='true', 
-        cell_towers=positionDict['gsm-cells'], 
-        wifi_access_points=positionDict['wifi'])
-
-    print('Google Maps Geolocation API returned:', geoloc)
-    return(geoloc)
+    print('OpenCellID Geolocation API queried with:', positionDict)
+    
+    if not api_key:
+        return {'error': 'OpenCellID API key missing'}
+    
+    # Get cell tower information
+    gsm_cells = positionDict.get('gsm-cells', [])
+    gsm_carrier = positionDict.get('gsm-carrier', {})
+    mcc = gsm_carrier.get('MCC', 0)
+    mnc = gsm_carrier.get('MNC', 0)
+    
+    if not gsm_cells or mcc == 0 or mnc == 0:
+        return {'error': 'No cell tower data available'}
+    
+    # Try to get location from cell towers
+    # Sort by signal strength (strongest first, which is less negative)
+    sorted_cells = sorted(gsm_cells, key=lambda x: x.get('signalStrength', -100), reverse=True)
+    
+    locations = []
+    
+    # Try up to 3 strongest cell towers
+    for cell in sorted_cells[:3]:
+        try:
+            lac = cell.get('locationAreaCode', 0)
+            cell_id = cell.get('cellId', 0)
+            
+            if lac == 0 or cell_id == 0:
+                continue
+            
+            # OpenCellID REST API endpoint
+            url = 'https://opencellid.org/cell/get'
+            params = {
+                'key': api_key,
+                'mcc': mcc,
+                'mnc': mnc,
+                'lac': lac,
+                'cellid': cell_id,
+                'format': 'json'
+            }
+            
+            response = requests.get(url, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                cell_info = response.json()
+                # Check if the response indicates success
+                if cell_info.get('status') == 'ok' and 'lat' in cell_info and 'lon' in cell_info:
+                    locations.append({
+                        'lat': float(cell_info['lat']),
+                        'lon': float(cell_info['lon']),
+                        'accuracy': int(cell_info.get('range', 1000))  # range in meters
+                    })
+            elif response.status_code == 400:
+                # Invalid request - skip this cell
+                continue
+            else:
+                # Rate limit or other error - log and continue
+                print(f'OpenCellID API error for cell {cell}: HTTP {response.status_code}')
+                continue
+                
+        except requests.exceptions.RequestException as e:
+            print(f'Error querying cell tower {cell}: {e}')
+            continue
+        except (ValueError, KeyError) as e:
+            print(f'Error parsing response for cell tower {cell}: {e}')
+            continue
+    
+    if not locations:
+        return {'error': 'No cell tower locations found in OpenCellID database'}
+    
+    # Average the locations if we have multiple
+    if len(locations) == 1:
+        result = locations[0]
+    else:
+        # Calculate weighted average based on accuracy (better accuracy = higher weight)
+        total_weight = sum(1.0 / max(loc['accuracy'], 1) for loc in locations)
+        lat = sum(loc['lat'] * (1.0 / max(loc['accuracy'], 1)) for loc in locations) / total_weight
+        lon = sum(loc['lon'] * (1.0 / max(loc['accuracy'], 1)) for loc in locations) / total_weight
+        # Use worst (largest) accuracy as overall accuracy
+        accuracy = max(loc['accuracy'] for loc in locations)
+        result = {'lat': lat, 'lon': lon, 'accuracy': accuracy}
+    
+    geoloc = {
+        'location': {
+            'lat': result['lat'],
+            'lng': result['lon']
+        },
+        'accuracy': result['accuracy']
+    }
+    
+    print('OpenCellID Geolocation API returned:', geoloc)
+    return geoloc
 
 """
 This is a debug block to test the GeoLocation API
 
-gmaps.geolocate(home_mobile_country_code='208', home_mobile_network_code='01', radio_type=None, carrier=None, consider_ip=False, cell_towers=cell_towers, wifi_access_points=None)
+# Example OpenCellID REST API usage:
+# requests.get('https://opencellid.org/cell/get', params={'key': api_key, 'mcc': 208, 'mnc': 1, 'lac': 7033, 'cellid': 17811, 'format': 'json'})
 
 ## DEBUG: USE DATA FROM ONE PACKET
 # Using RSSI
@@ -701,8 +779,7 @@ protocol_dict = {
 
 # Import dotenv with API keys and initialize API connections
 load_dotenv()
-GMAPS_API_KEY = os.getenv('GMAPS_API_KEY')
-gmaps = googlemaps.Client(key=GMAPS_API_KEY)
+opencellid_api_key = os.getenv('OPENCELLID_API_KEY')
 
 # Details about host server
 HOST = ''
