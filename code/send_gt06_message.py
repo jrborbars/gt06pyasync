@@ -4,7 +4,7 @@ import binascii
 import sys
 import os
 
-# Ensure we can import gt06_msg from the same directory
+# Ensure we can import gt06_msg from the same directory 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from gt06_msg import T01, T12, T13
